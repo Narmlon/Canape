@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora de Presupuestos Oriol</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script>
+        // Configuración de Tailwind para soportar cambio de modo oscuro mediante clase 'dark'
+        tailwind.config = {
+            darkMode: 'class'
+        }
+        // Aplicar el tema guardado de inmediato para evitar destellos blancos
+        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+    <style>
+        /* Fuerza a que el select cerrado (la opción seleccionada en pantalla) tenga un contraste óptimo en modo noche */
+        .dark select {
+            background-color: #27272a !important; /* zinc-800 */
+            color: #f4f4f5 !important;            /* zinc-100 */
+        }
+        
+        /* Fuerza a que las opciones desplegables tengan fondo blanco y texto oscuro */
+        /* para evitar problemas de contraste y texto invisible en ciertos navegadores */
+        select option {
+            color: #18181b !important;
+            background-color: #ffffff !important;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-black min-h-screen p-3 sm:p-6 md:p-8 text-slate-800 dark:text-zinc-100 transition-colors duration-200">
+    <!-- El contenedor principal utiliza ahora un gris carbón neutro puro en modo noche -->
+    <div class="max-w-4xl mx-auto bg-white dark:bg-zinc-900 p-4 sm:p-6 md:p-8 rounded-2xl shadow-sm border border-slate-100 dark:border-zinc-800/80 relative transition-colors duration-200">
+        
+        <!-- Selector de tema en la esquina superior derecha -->
+        <div class="absolute top-4 right-4 sm:top-6 sm:right-8">
+            <button id="themeToggle" onclick="toggleTheme()" class="p-2.5 bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 rounded-xl shadow-sm border border-slate-200 dark:border-zinc-700 hover:bg-slate-200 dark:hover:bg-zinc-700 transition duration-150 flex items-center gap-2 text-xs sm:text-sm font-semibold select-none">
+                <span id="themeIcon">🌙</span> <span id="themeText" class="hidden sm:inline">Modo Noche</span>
+            </button>
+        </div>
+
+        <header class="mb-6 pr-24 sm:pr-0">
+            <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
+                <span>📋</span> Calculadora de Presupuestos Oriol
+            </h1>
+            <p class="text-xs sm:text-sm text-slate-500 dark:text-zinc-400">Cotiza de forma automática con packs inteligentes adaptados. Catálogo precargado de forma predeterminada.</p>
+        </header>
+        
+        <div class="mb-6 p-4 sm:p-6 border-2 border-dashed border-emerald-200 dark:border-emerald-900/60 hover:border-blue-400 dark:hover:border-blue-500 rounded-xl text-center bg-emerald-50/20 dark:bg-emerald-950/5 hover:bg-slate-50 dark:hover:bg-zinc-850/20 transition duration-150">
+            <input type="file" id="excelFile" accept=".csv, .xlsx" class="hidden">
+            <label for="excelFile" class="cursor-pointer flex flex-col items-center justify-center space-y-2 py-2">
+                <svg class="w-10 h-10 text-emerald-500 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span class="text-emerald-600 dark:text-emerald-400 font-semibold hover:text-emerald-700 dark:hover:text-emerald-300 text-sm sm:text-base flex items-center gap-1">
+                    🟢 Base de datos integrada y lista para usar
+                </span>
+                <span class="text-xs text-slate-400 dark:text-zinc-500" id="fileNameDisplay">Sube un nuevo archivo .xlsx o .csv solo si deseas actualizar tarifas</span>
+            </label>
+        </div>
+
+        <div id="instructions" class="mb-6 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 text-blue-800 dark:text-blue-300 rounded-xl text-xs md:text-sm space-y-2">
+            <p class="font-bold flex items-center gap-1">💡 Consejos e información:</p>
+            <p class="text-xs text-blue-700 dark:text-blue-400">Todos los canapés, cabezales, colchones, literas, sofás, armarios, somieres y cómodas han sido cargados directamente desde tu Excel original.</p>
+        </div>
+
+        <!-- Formulario de Configuración del Producto -->
+        <div id="calculatorForm" class="hidden space-y-5 bg-slate-50/50 dark:bg-zinc-900/40 p-4 sm:p-6 rounded-2xl border border-slate-100 dark:border-zinc-800">
+            <h3 class="text-base sm:text-lg font-bold text-slate-800 dark:text-zinc-200 border-b border-slate-200 dark:border-zinc-800 pb-2 flex items-center gap-2">
+                <span>⚙️</span> Configurar Producto
+            </h3>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs sm:text-sm font-semibold text-slate-700 dark:text-zinc-300">Categoría</label>
+                    <select id="cat1" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-xs sm:text-sm text-slate-800 dark:text-zinc-100"></select>
+                </div>
+                <div>
+                    <label class="block text-xs sm:text-sm font-semibold text-slate-700 dark:text-zinc-300">Categoría 2</label>
+                    <select id="cat2" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-xs sm:text-sm text-slate-800 dark:text-zinc-100"></select>
+                </div>
+                <div>
+                    <label class="block text-xs sm:text-sm font-semibold text-slate-700 dark:text-zinc-300">Nombre (Medida)</label>
+                    <select id="nombre" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-xs sm:text-sm text-slate-800 dark:text-zinc-100"></select>
+                    
+                    <!-- Banner dinámico para informar del filtro inteligente de medidas -->
+                    <div id="filterBanner" class="hidden mt-2 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/60 rounded-xl p-3 flex flex-col gap-2 text-xs text-amber-800 dark:text-amber-300 transition duration-150">
+                        <div class="flex items-start gap-1.5">
+                            <span id="filterBannerIcon" class="text-sm">📏</span>
+                            <span id="filterBannerText" class="leading-tight">Mostrando solo productos de medida coincidente.</span>
+                        </div>
+                        <button type="button" onclick="disableFilter()" class="w-full bg-amber-100 dark:bg-amber-900/60 hover:bg-amber-200 dark:hover:bg-amber-800 text-amber-900 dark:text-amber-200 font-bold py-1.5 px-2.5 rounded-lg transition duration-150 text-[11px] sm:text-xs">
+                            Mostrar todas las medidas
+                        </button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs sm:text-sm font-semibold text-slate-700 dark:text-zinc-300 mb-1">Cantidad</label>
+                    <div class="flex items-center h-11 w-36 border border-slate-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 shadow-sm overflow-hidden mt-1">
+                        <button type="button" onclick="decrementQty()" class="w-12 h-full flex items-center justify-center text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-700 hover:text-slate-800 dark:hover:text-zinc-200 font-bold text-lg select-none transition duration-150 border-r border-slate-200 dark:border-zinc-700">
+                            -
+                        </button>
+                        <input type="number" id="cantidad" min="1" value="1" class="w-12 h-full text-center font-bold text-slate-800 dark:text-zinc-100 bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-sm sm:text-base">
+                        <button type="button" onclick="incrementQty()" class="w-12 h-full flex items-center justify-center text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-700 hover:text-slate-800 dark:hover:text-zinc-200 font-bold text-lg select-none transition duration-150 border-l border-slate-200 dark:border-zinc-700">
+                            +
+                        </button>
+                    </div>
+                </div>
+                <div id="colorWrapper" class="hidden">
+                    <label class="block text-xs sm:text-sm font-semibold text-slate-700 dark:text-zinc-300">Color</label>
+                    <select id="color" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-xs sm:text-sm text-slate-800 dark:text-zinc-100"></select>
+                </div>
+                <div id="ad1Wrapper" class="hidden">
+                    <label id="lblAd1" class="block text-xs sm:text-sm font-semibold text-slate-700 dark:text-zinc-300">Adicional 1</label>
+                    <select id="ad1" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-xs sm:text-sm text-slate-800 dark:text-zinc-100"></select>
+                </div>
+                <div id="ad2Wrapper" class="hidden">
+                    <label id="lblAd2" class="block text-xs sm:text-sm font-semibold text-slate-700 dark:text-zinc-300">Adicional 2</label>
+                    <select id="ad2" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-xs sm:text-sm text-slate-800 dark:text-zinc-100"></select>
+                </div>
+            </div>
+            <button onclick="addToCart()" id="addBtn" class="w-full bg-blue-600 text-white py-3 sm:py-3.5 px-4 rounded-xl font-bold hover:bg-blue-700 transition duration-150 shadow-md hidden flex justify-center items-center gap-2 text-sm sm:text-base">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                Añadir al carrito
+            </button>
+        </div>
+
+        <!-- Seccion del Carrito -->
+        <div id="cartSection" class="hidden mt-8 border-t border-slate-200 dark:border-zinc-800 pt-6">
+            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
+                <h2 class="text-lg sm:text-xl font-bold flex items-center gap-2 text-slate-900 dark:text-white">
+                    <span>🛒</span> Mi Carrito de Compra
+                </h2>
+                <button onclick="clearCart()" class="w-full sm:w-auto bg-red-500 text-white px-4 py-2 rounded-lg text-xs sm:text-sm font-medium hover:bg-red-600 transition duration-150">
+                    Vaciar carrito
+                </button>
+            </div>
+
+            <!-- Tabla de ordenadores (Desktop) -->
+            <div class="hidden md:block overflow-x-auto border border-slate-100 dark:border-zinc-800 rounded-xl">
+                <table class="w-full text-left border-collapse border-spacing-0">
+                    <thead>
+                        <tr class="bg-slate-50 dark:bg-zinc-800/40 border-b border-slate-200 dark:border-zinc-800 text-slate-500 dark:text-zinc-400 text-xs font-semibold uppercase tracking-wider">
+                            <th class="py-3.5 px-4">Detalle del Producto / Pack</th>
+                            <th class="py-3.5 px-4 w-28 text-center">Cantidad</th>
+                            <th class="py-3.5 px-4 w-32">Coste Original</th>
+                            <th class="py-3.5 px-4 w-44">Ganancia (€)</th>
+                            <th class="py-3.5 px-4 w-12 text-center"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="cartTableBody" class="divide-y divide-slate-100 dark:divide-zinc-800"></tbody>
+                </table>
+            </div>
+
+            <!-- Listado para móviles -->
+            <div class="block md:hidden space-y-4" id="cartMobileContainer"></div>
+
+            <!-- Resumen de Costes e Importe Total -->
+            <div class="mt-6 border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden bg-slate-50/50 dark:bg-zinc-900/30">
+                <div class="p-4 sm:p-5 space-y-2 border-b border-slate-200 dark:border-zinc-800 text-xs sm:text-sm">
+                    <div class="flex justify-between font-medium text-slate-500 dark:text-zinc-400">
+                        <span>Subtotal de Costes:</span>
+                        <span id="subtotalCostes" class="font-bold text-slate-800 dark:text-zinc-200">0.00€</span>
+                    </div>
+                    <div class="flex justify-between font-medium text-slate-500 dark:text-zinc-400">
+                        <span>Subtotal de Ganancias:</span>
+                        <span id="subtotalGanancias" class="font-bold text-green-700 dark:text-green-400">0.00€</span>
+                    </div>
+                </div>
+                
+                <div class="p-4 sm:p-5 bg-blue-50 dark:bg-blue-950/20 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4">
+                    <div class="flex flex-col">
+                        <span class="text-[10px] sm:text-xs uppercase tracking-wider font-extrabold text-blue-900 dark:text-blue-200">TOTAL PRESUPUESTO (PVP)</span>
+                        <span id="totalPresupuesto" class="text-xl sm:text-2xl font-black text-blue-900 dark:text-blue-300">0.00€</span>
+                    </div>
+                    
+                    <!-- Casilla de Montaje Gratuito ubicada de forma global al lado de Tramitar Pedido -->
+                    <div class="flex flex-col sm:flex-row items-center gap-4">
+                        <div class="flex items-center gap-2 bg-white/70 dark:bg-zinc-800/80 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 shadow-sm">
+                            <input type="checkbox" id="montajeGratuitoGlobal" onchange="toggleGlobalMontaje(this.checked)" class="w-5 h-5 text-blue-600 border-slate-300 dark:border-zinc-700 rounded focus:ring-blue-500 dark:bg-zinc-800 cursor-pointer">
+                            <label for="montajeGratuitoGlobal" class="text-xs sm:text-sm font-semibold text-slate-700 dark:text-zinc-300 cursor-pointer select-none flex items-center gap-1">
+                                🛠️ Añadir Montaje Gratuito
+                            </label>
+                        </div>
+                        <button onclick="toggleCheckoutForm()" id="checkoutBtn" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 px-6 rounded-xl shadow-md flex items-center justify-center gap-2 transition duration-150 text-sm">
+                            <span>📦</span> Tramitar Pedido
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Formulario de Datos de Entrega -->
+            <div id="checkoutForm" class="hidden mt-6 p-5 bg-slate-50 dark:bg-zinc-900/50 border border-slate-200 dark:border-zinc-800 rounded-2xl space-y-4 transition duration-300">
+                <div class="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-zinc-800">
+                    <h3 class="text-base font-bold text-slate-800 dark:text-zinc-200 flex items-center gap-2">
+                        <span>📍</span> Datos de Envío y Contacto
+                    </h3>
+                    <button type="button" onclick="clearCheckoutForm()" class="text-xs font-bold text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 flex items-center gap-1 transition select-none">
+                        🗑️ Limpiar formulario
+                    </button>
+                </div>
+                
+                <div class="grid grid-cols-4 gap-4">
+                    <div class="col-span-4 sm:col-span-2">
+                        <label for="orderStreet" class="block text-xs font-semibold text-slate-600 dark:text-zinc-400 uppercase tracking-wide">Dirección / Vía</label>
+                        <div class="flex gap-2 mt-1">
+                            <select id="orderStreetType" class="w-24 sm:w-28 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-xs sm:text-sm text-slate-800 dark:text-zinc-100 transition">
+                                <option value="Calle">Calle</option>
+                                <option value="Avenida">Av.</option>
+                                <option value="Plaza">Plaza</option>
+                                <option value="Paseo">Paseo</option>
+                                <option value="Ronda">Ronda</option>
+                                <option value="Carretera">Ctra.</option>
+                                <option value="Pasaje">Pasaje</option>
+                                <option value="Vía">Vía</option>
+                                <option value="Bulevar">Bulevar</option>
+                                <option value="Camino">Camino</option>
+                            </select>
+                            <input type="text" id="orderStreet" class="flex-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm transition dark:text-white" placeholder="Nombre de la vía">
+                        </div>
+                    </div>
+                    <div class="col-span-2 sm:col-span-1">
+                        <label for="orderNumber" class="block text-xs font-semibold text-slate-600 dark:text-zinc-400 uppercase tracking-wide">Número</label>
+                        <input type="text" id="orderNumber" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm transition dark:text-white" placeholder="Nº">
+                    </div>
+                    <div class="col-span-1">
+                        <label for="orderFloor" class="block text-xs font-semibold text-slate-600 dark:text-zinc-400 uppercase tracking-wide">Piso</label>
+                        <input type="text" id="orderFloor" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm dark:text-white" placeholder="Piso">
+                    </div>
+                    <div class="col-span-1">
+                        <label for="orderDoor" class="block text-xs font-semibold text-slate-600 dark:text-zinc-400 uppercase tracking-wide">Puerta</label>
+                        <input type="text" id="orderDoor" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm dark:text-white" placeholder="Puerta">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label for="orderZip" class="block text-xs font-semibold text-slate-600 dark:text-zinc-400 uppercase tracking-wide">Código Postal</label>
+                        <div class="flex gap-2 mt-1">
+                            <input type="text" id="orderZip" placeholder="e.g. 28001" class="w-24 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm transition dark:text-white text-center">
+                            <button type="button" id="zipSearchBtn" onclick="autoLookupZip()" class="flex-1 bg-blue-50 dark:bg-blue-950/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 rounded-lg text-xs font-bold transition duration-150 flex items-center justify-center gap-1 select-none">
+                                🔍 <span>Buscar CP</span>
+                            </button>
+                        </div>
+                        
+                        <!-- Panel de Selección de Códigos Postales Multiples -->
+                        <div id="zipSelectorWrapper" class="hidden mt-2.5 p-3.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl space-y-2 shadow-sm">
+                            <span class="text-[11px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wide block">📍 Selecciona tu Código Postal / Zona:</span>
+                            <div id="zipOptionsList" class="flex flex-col gap-1.5 max-h-40 overflow-y-auto pr-1"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="orderPhone" class="block text-xs font-semibold text-slate-600 dark:text-zinc-400 uppercase tracking-wide">Número de Teléfono</label>
+                        <input type="tel" id="orderPhone" placeholder="e.g. +34 600 000 000" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm transition dark:text-white">
+                    </div>
+                </div>
+
+                <!-- Sección Opcional de Hora de Entrega -->
+                <div class="p-4 bg-slate-100/50 dark:bg-zinc-800/40 border border-slate-200 dark:border-zinc-700 rounded-xl space-y-3">
+                    <label class="block text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wide flex items-center gap-1">
+                        <span>⏰</span> Hora de Entrega (Opcional)
+                    </label>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
+                        <div>
+                            <select id="deliveryOption" onchange="handleDeliveryOptionChange()" class="w-full p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-xs sm:text-sm text-slate-800 dark:text-zinc-100">
+                                <option value="">Sin especificar</option>
+                                <option value="antes">Antes de</option>
+                                <option value="entre">Entre</option>
+                                <option value="despues">Después de</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Contenedor para "antes de" o "después de" -->
+                        <div id="deliverySingleInputWrapper" class="hidden md:col-span-2">
+                            <input type="text" id="deliveryTimeSingle" placeholder="Indica la hora (ej: 17:00)" class="w-full p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-xs sm:text-sm dark:text-white">
+                        </div>
+                        
+                        <!-- Contenedor de rango para "entre" -->
+                        <div id="deliveryDoubleInputWrapper" class="hidden md:col-span-2 flex items-center gap-2">
+                            <input type="text" id="deliveryTimeStart" placeholder="Hora inicio (ej: 10:00)" class="w-full p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-xs sm:text-sm dark:text-white text-center">
+                            <span class="text-xs text-slate-500 dark:text-zinc-400 font-bold px-1">y</span>
+                            <input type="text" id="deliveryTimeEnd" placeholder="Hora fin (ej: 13:00)" class="w-full p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-xs sm:text-sm dark:text-white text-center">
+                        </div>
+                    </div>
+                </div>
+
+                <div id="checkoutError" class="hidden p-3 text-xs font-bold rounded-lg border text-center"></div>
+                
+                <div class="pt-2 flex flex-col sm:flex-row gap-3">
+                    <button onclick="generateWhatsAppMessage()" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-xl shadow-md transition duration-150 flex items-center justify-center gap-2 text-sm">
+                        <span>💬</span> Finalizar y Preparar WhatsApp
+                    </button>
+                    <button onclick="toggleCheckoutForm()" class="bg-slate-200 dark:bg-zinc-800 hover:bg-slate-300 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-300 font-semibold py-3 px-4 rounded-xl transition duration-150 text-sm">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+
+            <!-- Panel de Resultados de WhatsApp -->
+            <div id="whatsappShareBox" class="hidden mt-6 p-5 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/40 rounded-2xl space-y-3">
+                <div class="flex justify-between items-center">
+                    <h4 class="text-sm font-bold text-emerald-900 dark:text-emerald-300 flex items-center gap-1.5">
+                        <span>✅</span> ¡Mensaje Listo para Enviar!
+                    </h4>
+                    <button onclick="closeShareBox()" class="text-emerald-700 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-200 font-bold text-sm">Cerrar</button>
+                </div>
+                <p class="text-xs text-emerald-800 dark:text-emerald-400">Copia este resumen formateado y envíaselo directamente a tu cliente por WhatsApp:</p>
+                <div class="relative bg-white dark:bg-black p-4 rounded-lg border border-emerald-200 dark:border-emerald-900/30">
+                    <pre id="whatsappMessageContent" class="text-xs font-mono text-slate-800 dark:text-zinc-200 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto"></pre>
+                </div>
+                <div class="flex flex-col sm:flex-row gap-2 pt-1">
+                    <button onclick="copyToClipboard()" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-lg text-xs transition duration-150 flex items-center justify-center gap-2">
+                        <span>📋</span> Copiar al Portapapeles
+                    </button>
+                    <button onclick="openWhatsAppWeb()" class="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 px-4 rounded-lg text-xs transition duration-150 flex items-center justify-center gap-2">
+                        <span>📲</span> Enviar Directo a WhatsApp
+                    </button>
+                </div>
+                <div id="copySuccessAlert" class="hidden text-center text-xs text-emerald-700 dark:text-emerald-300 font-semibold bg-emerald-100 dark:bg-emerald-950/40 p-2 rounded-lg">
+                    ¡Copiado con éxito al portapapeles!
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // BASE DE DATOS INTEGRADA DE MANERA DETERMINADA DESDE EL EXCEL ORIGINAL
+        const preloadedData = [
+            // CANAPÉ FRONTAL
+            { Categoria: "Canape", "Categoria 2": "Frontal", Nombre: "90 x 190", "Color 1": "Blanco", "Color 2": "Cambrian", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Artico", Precio: 95, "Adicional 2": "Apertura Lateral", "Coste adicional 2": 20 },
+            { Categoria: "Canape", "Categoria 2": "Frontal", Nombre: "90 x 200", "Color 1": "Blanco", "Color 2": "Cambrian", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Artico", Precio: 115 },
+            { Categoria: "Canape", "Categoria 2": "Frontal", Nombre: "105 x 190", "Color 1": "Blanco", "Color 2": "Cambrian", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Artico", Precio: 100, "Adicional 2": "Apertura Lateral", "Coste adicional 2": 20 },
+            { Categoria: "Canape", "Categoria 2": "Frontal", Nombre: "105 x 200", "Color 1": "Blanco", "Color 2": "Cambrian", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Artico", Precio: 120 },
+            { Categoria: "Canape", "Categoria 2": "Frontal", Nombre: "120 x 190", "Color 1": "Blanco", "Color 2": "Cambrian", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Artico", Precio: 105, "Adicional 2": "Apertura Lateral", "Coste adicional 2": 25 },
+            { Categoria: "Canape", "Categoria 2": "Frontal", Nombre: "135 x 180", "Color 1": "Blanco", "Color 2": "Cambrian", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Artico", Precio: 105 },
+            { Categoria: "Canape", "Categoria 2": "Frontal", Nombre: "135 x 190", "Color 1": "Blanco", "Color 2": "Cambrian", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Artico", Precio: 105, "Adicional 1": "Tapa Partida", "Adicional 2": "Apertura Lateral", "Coste adicional 1": 40, "Coste adicional 2": 25 },
+            { Categoria: "Canape", "Categoria 2": "Frontal", Nombre: "135 x 200", "Color 1": "Blanco", "Color 2": "Cambrian", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Artico", Precio: 125 },
+            { Categoria: "Canape", "Categoria 2": "Frontal", Nombre: "140 x 190", "Color 1": "Blanco", "Color 2": "Cambrian", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Artico", Precio: 110 },
+            { Categoria: "Canape", "Categoria 2": "Frontal", Nombre: "140 x 200", "Color 1": "Blanco", "Color 2": "Cambrian", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Artico", Precio: 130 },
+            { Categoria: "Canape", "Categoria 2": "Frontal", Nombre: "150 x 190", "Color 1": "Blanco", "Color 2": "Cambrian", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Artico", Precio: 110, "Adicional 1": "Tapa Partida", "Coste adicional 1": 40 },
+            { Categoria: "Canape", "Categoria 2": "Frontal", Nombre: "150 x 200", "Color 1": "Blanco", "Color 2": "Cambrian", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Artico", Precio: 130, "Adicional 1": "Tapa Partida", "Coste adicional 1": 40 },
+            { Categoria: "Canape", "Categoria 2": "Frontal", Nombre: "160 x 190", "Color 1": "Blanco", "Color 2": "Cambrian", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Artico", Precio: 160 },
+            { Categoria: "Canape", "Categoria 2": "Frontal", Nombre: "160 x 200", "Color 1": "Blanco", "Color 2": "Cambrian", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Artico", Precio: 160, "Adicional 1": "Tapa Partida", "Coste adicional 1": 40 },
+            { Categoria: "Canape", "Categoria 2": "Frontal", Nombre: "180 x 200", "Color 1": "Blanco", "Color 2": "Cambrian", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Artico", Precio: 200 },
+
+            // CABEZALES
+            { Categoria: "Cabezal", "Categoria 2": "Frontal", Nombre: "90x120", "Color 1": "Blanco", "Color 2": "Beige", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Negro", "Color 6": "Gris Oscuro", "Color 7": "Gris Plata", Precio: 40 },
+            { Categoria: "Cabezal", "Categoria 2": "Frontal", Nombre: "105x120", "Color 1": "Blanco", "Color 2": "Beige", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Negro", "Color 6": "Gris Oscuro", "Color 7": "Gris Plata", Precio: 40 },
+            { Categoria: "Cabezal", "Categoria 2": "Frontal", Nombre: "120x120", "Color 1": "Blanco", "Color 2": "Beige", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Negro", "Color 6": "Gris Oscuro", "Color 7": "Gris Plata", Precio: 45 },
+            { Categoria: "Cabezal", "Categoria 2": "Frontal", Nombre: "135x120", "Color 1": "Blanco", "Color 2": "Beige", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Negro", "Color 6": "Gris Oscuro", "Color 7": "Gris Plata", Precio: 45 },
+            { Categoria: "Cabezal", "Categoria 2": "Frontal", Nombre: "150x120", "Color 1": "Blanco", "Color 2": "Beige", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Negro", "Color 6": "Gris Oscuro", "Color 7": "Gris Plata", Precio: 45 },
+            { Categoria: "Cabezal", "Categoria 2": "Frontal", Nombre: "160x120", "Color 1": "Blanco", "Color 2": "Beige", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Negro", "Color 6": "Gris Oscuro", "Color 7": "Gris Plata", Precio: 50 },
+            { Categoria: "Cabezal", "Categoria 2": "Frontal", Nombre: "180x120", "Color 1": "Blanco", "Color 2": "Beige", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Negro", "Color 6": "Gris Oscuro", "Color 7": "Gris Plata", Precio: 60 },
+
+            // COLCHONES WHITE (Anteriormente 23 Cm)
+            { Categoria: "Colchon", "Categoria 2": "White", Nombre: "90 x 190", Precio: 45 },
+            { Categoria: "Colchon", "Categoria 2": "White", Nombre: "105 x 190", Precio: 60 },
+            { Categoria: "Colchon", "Categoria 2": "White", Nombre: "120 x 190", Precio: 65 },
+            { Categoria: "Colchon", "Categoria 2": "White", Nombre: "135 x 190", Precio: 65 },
+            { Categoria: "Colchon", "Categoria 2": "White", Nombre: "150 x 190", Precio: 75 },
+
+            // COLCHONES VISCOELÁSTICOS 25 CM
+            { Categoria: "Colchon", "Categoria 2": "Viscoelastico 25 Cm", Nombre: "80x190", Precio: 60 },
+            { Categoria: "Colchon", "Categoria 2": "Viscoelastico 25 Cm", Nombre: "80x180", Precio: 60 },
+            { Categoria: "Colchon", "Categoria 2": "Viscoelastico 25 Cm", Nombre: "90 x 200", Precio: 70 },
+            { Categoria: "Colchon", "Categoria 2": "Viscoelastico 25 Cm", Nombre: "105x200", Precio: 70 },
+            { Categoria: "Colchon", "Categoria 2": "Viscoelastico 25 Cm", Nombre: "135 x 180", Precio: 80 },
+            { Categoria: "Colchon", "Categoria 2": "Viscoelastico 25 Cm", Nombre: "135x200", Precio: 90 },
+            { Categoria: "Colchon", "Categoria 2": "Viscoelastico 25 Cm", Nombre: "140 x 190", Precio: 90 },
+            { Categoria: "Colchon", "Categoria 2": "Viscoelastico 25 Cm", Nombre: "140 x 200", Precio: 100 },
+            { Categoria: "Colchon", "Categoria 2": "Viscoelastico 25 Cm", Nombre: "150 x 200", Precio: 100 },
+            { Categoria: "Colchon", "Categoria 2": "Viscoelastico 25 Cm", Nombre: "160x190", Precio: 110 },
+            { Categoria: "Colchon", "Categoria 2": "Viscoelastico 25 Cm", Nombre: "160 x 200", Precio: 110 },
+            { Categoria: "Colchon", "Categoria 2": "Viscoelastico 25 Cm", Nombre: "180 x 200", Precio: 130 },
+
+            // COLCHONES GRAFENO
+            { Categoria: "Colchon", "Categoria 2": "Grafeno 28/30 Cm", Nombre: "90 x 200", Precio: 85 },
+            { Categoria: "Colchon", "Categoria 2": "Grafeno 28/30 Cm", Nombre: "90 x 190", Precio: 85 },
+            { Categoria: "Colchon", "Categoria 2": "Grafeno 28/30 Cm", Nombre: "105 x 190", Precio: 100 },
+            { Categoria: "Colchon", "Categoria 2": "Grafeno 28/30 Cm", Nombre: "105x200", Precio: 110 },
+            { Categoria: "Colchon", "Categoria 2": "Grafeno 28/30 Cm", Nombre: "120 x 190", Precio: 115 },
+            { Categoria: "Colchon", "Categoria 2": "Grafeno 28/30 Cm", Nombre: "135 x 190", Precio: 115 },
+            { Categoria: "Colchon", "Categoria 2": "Grafeno 28/30 Cm", Nombre: "135x180", Precio: 115 },
+            { Categoria: "Colchon", "Categoria 2": "Grafeno 28/30 Cm", Nombre: "140 x 190", Precio: 120 },
+            { Categoria: "Colchon", "Categoria 2": "Grafeno 28/30 Cm", Nombre: "140 x 200", Precio: 150 },
+            { Categoria: "Colchon", "Categoria 2": "Grafeno 28/30 Cm", Nombre: "150 x 190", Precio: 120 },
+            { Categoria: "Colchon", "Categoria 2": "Grafeno 28/30 Cm", Nombre: "150 x 200", Precio: 150 },
+            { Categoria: "Colchon", "Categoria 2": "Grafeno 28/30 Cm", Nombre: "160x190", Precio: 160 },
+            { Categoria: "Colchon", "Categoria 2": "Grafeno 28/30 Cm", Nombre: "160 x 200", Precio: 160 },
+            { Categoria: "Colchon", "Categoria 2": "Grafeno 28/30 Cm", Nombre: "180 x 200", Precio: 190 },
+
+            // COLCHONES MUELLES 30 CM
+            { Categoria: "Colchon", "Categoria 2": "Muelles 30 Cm", Nombre: "90x190", Precio: 105 },
+            { Categoria: "Colchon", "Categoria 2": "Muelles 30 Cm", Nombre: "105X190", Precio: 125 },
+            { Categoria: "Colchon", "Categoria 2": "Muelles 30 Cm", Nombre: "120X190", Precio: 140 },
+            { Categoria: "Colchon", "Categoria 2": "Muelles 30 Cm", Nombre: "135X190", Precio: 140 },
+            { Categoria: "Colchon", "Categoria 2": "Muelles 30 Cm", Nombre: "140X200", Precio: 150 },
+            { Categoria: "Colchon", "Categoria 2": "Muelles 30 Cm", Nombre: "150X190", Precio: 150 },
+            { Categoria: "Colchon", "Categoria 2": "Muelles 30 Cm", Nombre: "150X200", Precio: 185 },
+            { Categoria: "Colchon", "Categoria 2": "Muelles 30 Cm", Nombre: "160X200", Precio: 195 },
+            { Categoria: "Colchon", "Categoria 2": "Muelles 30 Cm", Nombre: "180X200", Precio: 240 },
+
+            // COLCHONES YANIS
+            { Categoria: "Colchon", "Categoria 2": "Yanis", Nombre: "90X190", Precio: 180 },
+            { Categoria: "Colchon", "Categoria 2": "Yanis", Nombre: "105X190", Precio: 190 },
+            { Categoria: "Colchon", "Categoria 2": "Yanis", Nombre: "120X190", Precio: 200 },
+            { Categoria: "Colchon", "Categoria 2": "Yanis", Nombre: "135X190", Precio: 210 },
+            { Categoria: "Colchon", "Categoria 2": "Yanis", Nombre: "140X190", Precio: 210 },
+            { Categoria: "Colchon", "Categoria 2": "Yanis", Nombre: "150X190", Precio: 220 },
+            { Categoria: "Colchon", "Categoria 2": "Yanis", Nombre: "150X200", Precio: 225 },
+            { Categoria: "Colchon", "Categoria 2": "Yanis", Nombre: "160X200", Precio: 235 },
+            { Categoria: "Colchon", "Categoria 2": "Yanis", Nombre: "180X200", Precio: 350 },
+
+            // LITERA
+            { Categoria: "Litera", "Categoria 2": "Litera Reforzada", Nombre: "90x190", Precio: 115 },
+
+            // MESA
+            { Categoria: "Mesa", "Categoria 2": "Mesa + Sillas", Nombre: "Unica", Precio: 130 },
+            { Categoria: "Mesa", "Categoria 2": "Mesilla Café", Nombre: "90x50", "Color 1": "Blanco", "Color 2": "Cambrian", Precio: 45 },
+
+            // COMODAS
+            { Categoria: "Comoda", "Categoria 2": "4 cajones", Nombre: "78x90x36", "Color 1": "Blanco", "Color 2": "Cambrian", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Artico", Precio: 60 },
+            
+            // MESITA 3 CAJONES (Categoría: Mesita, Categoria 2: 3 cajones)
+            { Categoria: "Mesita", "Categoria 2": "3 cajones", Nombre: "62x45x31", "Color 1": "Blanco", "Color 2": "Cambrian", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Artico", Precio: 30 },
+
+            // ARMARIOS
+            { Categoria: "Armario", "Categoria 2": "2 Puertas + 2 Cajones", Nombre: "100x200x50", "Color 1": "Blanco", "Color 2": "Cambrian", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Artico", Precio: 105 },
+            { Categoria: "Armario", "Categoria 2": "3 puertas + 2 cajones", Nombre: "150x200x50", "Color 1": "Blanco", "Color 2": "Cambrian", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Artico", Precio: 145 },
+            { Categoria: "Armario", "Categoria 2": "4 puertas + 2 cajones", Nombre: "200x200x50", "Color 1": "Blanco", "Color 2": "Cambrian", "Color 3": "Wengue", "Color 4": "Cerezo", "Color 5": "Artico", Precio: 175 },
+
+            // SOFÁS
+            { Categoria: "Sofa", "Categoria 2": "Flora", Nombre: "344x200x100", "Color 1": "Gris claro", "Color 2": "Gris oscuro", "Color 3": "Beige", Precio: 650, "Adicional 1": "Derecho", "Adicional 2": "Izquierdo" },
+            { Categoria: "Sofa", "Categoria 2": "Grecia", Nombre: "180+140x90", "Color 1": "Gris claro", "Color 2": "Gris oscuro", "Color 3": "Beige", Precio: 320 },
+            { Categoria: "Sofa", "Categoria 2": "Grecia", Nombre: "140x90", "Color 1": "Gris claro", "Color 2": "Gris oscuro", "Color 3": "Beige", Precio: 160 },
+            { Categoria: "Sofa", "Categoria 2": "Grecia", Nombre: "180x90", "Color 1": "Gris claro", "Color 2": "Gris oscuro", "Color 3": "Beige", Precio: 180 },
+            { Categoria: "Sofa", "Categoria 2": "Imperial", Nombre: "265x90", "Color 1": "Gris claro", "Color 2": "Gris oscuro", "Color 3": "Beige", "Color 4": "Negro", Precio: 330 },
+            { Categoria: "Sofa", "Categoria 2": "Oscar", Nombre: "265x155", "Color 1": "Gris claro", "Color 2": "Gris oscuro", "Color 3": "Beige", Precio: 300, "Adicional 1": "Derecho", "Adicional 2": "Izquierdo" },
+
+            // SOMIERES / BASES TAPIZADAS
+            { Categoria: "Somier", "Categoria 2": "Morpheo", Nombre: "90x190", Precio: 30, "Adicional 1": "Patas", "Coste adicional 1": 5 },
+            { Categoria: "Somier", "Categoria 2": "Morpheo", Nombre: "105x190", Precio: 35, "Adicional 1": "Patas", "Coste adicional 1": 5 },
+            { Categoria: "Somier", "Categoria 2": "Morpheo", Nombre: "120x190", Precio: 40, "Adicional 1": "Patas", "Coste adicional 1": 5 },
+            { Categoria: "Somier", "Categoria 2": "Morpheo", Nombre: "135x190", Precio: 40, "Adicional 1": "Patas", "Coste adicional 1": 5 },
+            { Categoria: "Somier", "Categoria 2": "Morpheo", Nombre: "150x190", Precio: 45, "Adicional 1": "Patas", "Coste adicional 1": 5 },
+            { Categoria: "Somier", "Categoria 2": "Morpheo", Nombre: "150x200", Precio: 50, "Adicional 1": "Patas", "Coste adicional 1": 5 },
+            { Categoria: "Somier", "Categoria 2": "Morpheo", Nombre: "160x200", Precio: 60, "Adicional 1": "Patas", "Coste adicional 1": 5 },
+
+            { Categoria: "Somier", "Categoria 2": "Xion", Nombre: "90X190", Precio: 25, "Adicional 1": "Patas", "Coste adicional 1": 5 },
+            { Categoria: "Somier", "Categoria 2": "Xion", Nombre: "90X200", Precio: 30, "Adicional 1": "Patas", "Coste adicional 1": 5 },
+            { Categoria: "Somier", "Categoria 2": "Xion", Nombre: "105X190", Precio: 30, "Adicional 1": "Patas", "Coste adicional 1": 5 },
+            { Categoria: "Somier", "Categoria 2": "Xion", Nombre: "120X190", Precio: 30, "Adicional 1": "Patas", "Coste adicional 1": 5 },
+            { Categoria: "Somier", "Categoria 2": "Xion", Nombre: "135X190", Precio: 30, "Adicional 1": "Patas", "Coste adicional 1": 5 },
+            { Categoria: "Somier", "Categoria 2": "Xion", Nombre: "150X190", Precio: 35, "Adicional 1": "Patas", "Coste adicional 1": 5 },
+            { Categoria: "Somier", "Categoria 2": "Xion", Nombre: "150X200", Precio: 40, "Adicional 1": "Patas", "Coste adicional 1": 5 },
+
+            { Categoria: "Somier", "Categoria 2": "Base Tapizada", Nombre: "90 x 190", Precio: 45, "Adicional 1": "Patas", "Coste adicional 1": 5 },
+            { Categoria: "Somier", "Categoria 2": "Base Tapizada", Nombre: "105 x 190", Precio: 50, "Adicional 1": "Patas", "Coste adicional 1": 5 },
+            { Categoria: "Somier", "Categoria 2": "Base Tapizada", Nombre: "120 x 190", Precio: 55, "Adicional 1": "Patas", "Coste adicional 1": 5 },
+            { Categoria: "Somier", "Categoria 2": "Base Tapizada", Nombre: "135x190", Precio: 55, "Adicional 1": "Patas", "Coste adicional 1": 5 },
+            { Categoria: "Somier", "Categoria 2": "Base Tapizada", Nombre: "150 x 190", Precio: 60, "Adicional 1": "Patas", "Coste adicional 1": 5 },
+            { Categoria: "Somier", "Categoria 2": "Base Tapizada", Nombre: "150 x 200", Precio: 70, "Adicional 1": "Patas", "Coste adicional 1": 5 },
+            { Categoria: "Somier", "Categoria 2": "Base Tapizada", Nombre: "160 x 200", Precio: 75, "Adicional 1": "Patas", "Coste adicional 1": 5 }
+        ];
+
+        let rawData = [...preloadedData], cart = [];
+        
+        // Estado de control del filtro dinámico de medidas y montaje global
+        let activeCanapeSize = null;
+        let activeColchonSize = null;
+        let filterEnabled = true;
+        let globalMontaje = false;
+
+        // Alternar el tema Día/Noche
+        function toggleTheme() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            updateThemeUI();
+        }
+
+        // Actualizar la interfaz del botón de tema
+        function updateThemeUI() {
+            const isDark = document.documentElement.classList.contains('dark');
+            const icon = document.getElementById('themeIcon');
+            const text = document.getElementById('themeText');
+            if (icon && text) {
+                icon.textContent = isDark ? '☀️' : '🌙';
+                text.textContent = isDark ? 'Modo Día' : 'Modo Noche';
+            }
+        }
+
+        // Ejecutar sincronización al inicio
+        updateThemeUI();
+
+        // Función para extraer la medida estandarizada (ej: "135x190") de un texto
+        function extractSize(str) {
+            if (!str) return null;
+            const match = str.match(/(\d{2,3})\s*[xX\*]\s*(\d{2,3})/);
+            if (match) {
+                return `${match[1]}x${match[2]}`;
+            }
+            return null;
+        }
+
+        // Obtener la medida de referencia basándose en el carrito y en el último producto configurado
+        function getReferenceSize(currentCategory) {
+            const isCurrentColchon = esColchon(currentCategory);
+            const isCurrentCanape = esCanape(currentCategory);
+            
+            if (isCurrentColchon) {
+                const canapeInCart = cart.find(c => esCanape(c.categoria));
+                if (canapeInCart) {
+                    const size = extractSize(canapeInCart.cat);
+                    if (size) return { size, source: "canapé del carrito" };
+                }
+                if (activeCanapeSize) {
+                    return { size: activeCanapeSize, source: "canapé seleccionado" };
+                }
+            } else if (isCurrentCanape) {
+                const colchonInCart = cart.find(c => esColchon(c.categoria));
+                if (colchonInCart) {
+                    const size = extractSize(colchonInCart.cat);
+                    if (size) return { size, source: "colchón del carrito" };
+                }
+                if (activeColchonSize) {
+                    return { size: activeColchonSize, source: "colchón seleccionado" };
+                }
+            }
+            return null;
+        }
+
+        function disableFilter() {
+            filterEnabled = false;
+            updateNombre();
+        }
+
+        document.getElementById('excelFile').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            document.getElementById('fileNameDisplay').textContent = `Cargado: ${file.name}`;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const data = new Uint8Array(e.target.result);
+                const wb = XLSX.read(data, {type: 'array'});
+                rawData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+                document.getElementById('instructions').classList.add('hidden');
+                initForm();
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        function initForm() {
+            document.getElementById('calculatorForm').classList.remove('hidden');
+            const cats = [...new Set(rawData.map(r => r.Categoria).filter(c => c))];
+            fillSelect('cat1', cats, updateCat2);
+            updateCat2();
+        }
+
+        // Inicialización automatizada al cargar la ventana
+        window.addEventListener('load', () => {
+            initForm();
+        });
+
+        function fillSelect(id, options, callback) {
+            const el = document.getElementById(id);
+            el.innerHTML = options.map(o => `<option value="${o}">${o}</option>`).join('');
+            if(callback) el.onchange = callback;
+        }
+
+        const normalizeStr = (str) => { if (!str) return ""; return str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); };
+        const esCanape = (cat) => normalizeStr(cat).includes("canape");
+        const esColchon = (cat) => normalizeStr(cat).includes("colchon");
+        const esCabezal = (cat) => normalizeStr(cat).includes("cabezal");
+        const esComoda = (cat) => normalizeStr(cat).includes("comoda") || normalizeStr(cat).includes("cajones");
+        const esLitera = (cat) => normalizeStr(cat).includes("litera");
+        const esArmario = (cat) => normalizeStr(cat).includes("armario");
+        function getStandardProfit(categoria) { return esArmario(categoria) ? 105 : 80; }
+
+        function updateCat2() {
+            filterEnabled = true;
+            const cat1 = document.getElementById('cat1').value;
+            const cats2 = [...new Set(rawData.filter(r => r.Categoria === cat1).map(r => r['Categoria 2'] || '(Ninguna)'))];
+            const standardProfit = getStandardProfit(cat1);
+            const el = document.getElementById('cat2');
+            el.innerHTML = cats2.map(c2 => {
+                const items = rawData.filter(r => r.Categoria === cat1 && (c2 === '(Ninguna)' ? !r['Categoria 2'] : (r['Categoria 2'] === c2)));
+                const pvps = items.map(r => { const price = parseFloat(r.Precio); return !isNaN(price) ? (price + standardProfit) : null; }).filter(p => p !== null);
+                let priceText = "";
+                if (pvps.length > 0) { const minPvp = Math.min(...pvps); const maxPvp = Math.max(...pvps); priceText = (minPvp === maxPvp) ? ` (${minPvp.toFixed(2)}€)` : ` (${minPvp.toFixed(2)}€ - ${maxPvp.toFixed(2)}€)`; }
+                return `<option value="${c2}">${c2}${priceText}</option>`;
+            }).join('');
+            el.onchange = updateNombre;
+            updateNombre();
+        }
+
+        function updateExtras() {
+            const item = getSelectedItem();
+            if(!item) {
+                document.getElementById('colorWrapper').classList.add('hidden');
+                document.getElementById('ad1Wrapper').classList.add('hidden');
+                document.getElementById('ad2Wrapper').classList.add('hidden');
+                document.getElementById('addBtn').classList.add('hidden');
+                return;
+            }
+            const colores = [];
+            for(let i=1; i<=7; i++) {
+                if(item[`Color ${i}`]) colores.push(item[`Color ${i}`]);
+            }
+            document.getElementById('colorWrapper').classList.toggle('hidden', colores.length === 0);
+            if(colores.length > 0) fillSelect('color', colores);
+
+            // Control unificado para sofás con chaiselongue derecho/izquierdo en lugar de "Si/No"
+            if (item.Categoria === 'Sofa' && item['Adicional 1'] === 'Derecho' && item['Adicional 2'] === 'Izquierdo') {
+                document.getElementById('ad1Wrapper').classList.remove('hidden');
+                document.getElementById('lblAd1').textContent = "Lado Chaiselongue";
+                document.getElementById('ad1').innerHTML = `<option value="Derecho">Derecho</option><option value="Izquierdo">Izquierdo</option>`;
+                document.getElementById('ad2Wrapper').classList.add('hidden');
+            } else {
+                ['1', '2'].forEach(n => {
+                    const itemLabel = item[`Adicional ${n}`];
+                    const show = !!itemLabel;
+                    document.getElementById(`ad${n}Wrapper`).classList.toggle('hidden', !show);
+                    if(show) { 
+                        document.getElementById(`lblAd${n}`).textContent = itemLabel; 
+                        document.getElementById(`ad${n}`).innerHTML = `<option value="No">No</option><option value="Si">Si (+${item['Coste adicional '+n] || 0}€)</option>`; 
+                    }
+                });
+            }
+            document.getElementById('addBtn').classList.remove('hidden');
+        }
+
+        function handleNombreChange() {
+            const item = getSelectedItem();
+            if (!item) return;
+            
+            const size = extractSize(item.Nombre);
+            if (size) {
+                if (esCanape(item.Categoria)) {
+                    activeCanapeSize = size;
+                } else if (esColchon(item.Categoria)) {
+                    activeColchonSize = size;
+                }
+            }
+        }
+
+        function updateFilterBanner(isFiltered, size, source, isEmpty) {
+            const banner = document.getElementById('filterBanner');
+            const text = document.getElementById('filterBannerText');
+            const icon = document.getElementById('filterBannerIcon');
+            
+            if (isFiltered && size) {
+                if (isEmpty) {
+                    icon.textContent = "⚠️";
+                    text.innerHTML = `No hay opciones compatibles con la medida del <strong>${source}</strong> (<strong>${size}</strong>).`;
+                } else {
+                    icon.textContent = "📏";
+                    text.innerHTML = `Mostrando solo opciones que coinciden con la medida del <strong>${source}</strong> (<strong>${size}</strong>).`;
+                }
+                banner.classList.remove('hidden');
+            } else {
+                banner.classList.add('hidden');
+            }
+        }
+
+        function updateNombre() {
+            const c1 = document.getElementById('cat1').value;
+            const c2 = document.getElementById('cat2').value;
+            let items = rawData.filter(r => r.Categoria === c1 && (c2 === '(Ninguna)' ? !r['Categoria 2'] : (r['Categoria 2'] === c2)));
+            const standardProfit = getStandardProfit(c1);
+            const el = document.getElementById('nombre');
+
+            const ref = getReferenceSize(c1);
+            let filteredItems = items;
+            let isFiltered = false;
+
+            if (ref && filterEnabled) {
+                filteredItems = items.filter(r => {
+                    const itemSize = extractSize(r.Nombre);
+                    return itemSize === ref.size;
+                });
+                isFiltered = true;
+            }
+
+            if (filteredItems.length > 0) {
+                el.innerHTML = filteredItems.map(r => { 
+                    const price = parseFloat(r.Precio); 
+                    const pvpPrice = !isNaN(price) ? (price + standardProfit) : null; 
+                    const priceText = pvpPrice !== null ? ` (${pvpPrice.toFixed(2)}€)` : ""; 
+                    return `<option value="${r.Nombre}">${r.Nombre}${priceText}</option>`; 
+                }).join('');
+            } else {
+                const refSizeMsg = ref ? ` (${ref.size})` : '';
+                el.innerHTML = `<option value="" disabled selected>No hay medidas compatibles${refSizeMsg}</option>`;
+            }
+
+            updateFilterBanner(isFiltered, ref ? ref.size : null, ref ? ref.source : null, filteredItems.length === 0);
+
+            el.onchange = () => {
+                handleNombreChange();
+                updateExtras();
+            };
+            
+            handleNombreChange();
+            updateExtras();
+        }
+
+        function getSelectedItem() { const c1 = document.getElementById('cat1').value; const c2 = document.getElementById('cat2').value; const nombre = document.getElementById('nombre').value; return rawData.find(r => r.Categoria === c1 && (r['Categoria 2'] || '(Ninguna)') === c2 && r.Nombre === nombre); }
+        function incrementQty() { const input = document.getElementById('cantidad'); input.value = parseInt(input.value || 1) + 1; }
+        function decrementQty() { const input = document.getElementById('cantidad'); const val = parseInt(input.value || 1); if (val > 1) input.value = val - 1; }
+
+        function addToCart() {
+            const item = getSelectedItem();
+            if (!item) return;
+            const cantidad = parseInt(document.getElementById('cantidad').value) || 1;
+            let coste = parseFloat(item.Precio || 0);
+            let detalles = `${item.Categoria} ${item['Categoria 2'] || ''} - ${item.Nombre}`;
+            
+            let colorVal = "";
+            if (!document.getElementById('colorWrapper').classList.contains('hidden')) { 
+                colorVal = document.getElementById('color').value; 
+                detalles += ` [Color: ${colorVal}]`; 
+            }
+            
+            let ad1Val = "No";
+            let ad2Val = "No";
+
+            // Tratamiento inteligente para sofás con Chaiselongue
+            if (item.Categoria === 'Sofa' && item['Adicional 1'] === 'Derecho' && item['Adicional 2'] === 'Izquierdo') {
+                ad1Val = document.getElementById('ad1').value;
+                detalles += ` [Chaiselongue: ${ad1Val}]`;
+            } else {
+                if (!document.getElementById('ad1Wrapper').classList.contains('hidden')) {
+                    ad1Val = document.getElementById('ad1').value;
+                    if (ad1Val === 'Si') {
+                        coste += parseFloat(item['Coste adicional 1'] || 0);
+                        detalles += ` + ${item['Adicional 1']}`;
+                    }
+                }
+                if (!document.getElementById('ad2Wrapper').classList.contains('hidden')) {
+                    ad2Val = document.getElementById('ad2').value;
+                    if (ad2Val === 'Si') {
+                        coste += parseFloat(item['Coste adicional 2'] || 0);
+                        detalles += ` + ${item['Adicional 2']}`;
+                    }
+                }
+            }
+
+            const existingItem = cart.find(c => 
+                c.categoria === item.Categoria && 
+                c.categoria2 === (item['Categoria 2'] || '(Ninguna)') &&
+                c.nombre === item.Nombre &&
+                c.color === colorVal &&
+                c.ad1 === ad1Val &&
+                c.ad2 === ad2Val
+            );
+
+            if (existingItem) {
+                existingItem.cantidad += cantidad; 
+            } else {
+                cart.push({ 
+                    cat: detalles, 
+                    coste, 
+                    categoria: item.Categoria, 
+                    categoria2: item['Categoria 2'] || '(Ninguna)',
+                    nombre: item.Nombre,
+                    color: colorVal,
+                    ad1: ad1Val,
+                    ad2: ad2Val,
+                    cantidad, 
+                    manualGan: null
+                });
+            }
+            document.getElementById('cantidad').value = 1;
+            updateCartUI();
+        }
+
+        // Recalcular coste y detalle de un artículo tras editar sus variantes
+        function recalculateCartItem(cartItem) {
+            const rawItem = rawData.find(r => r.Categoria === cartItem.categoria && (r['Categoria 2'] || '(Ninguna)') === cartItem.categoria2 && r.Nombre === cartItem.nombre);
+            if (!rawItem) return;
+            
+            let coste = parseFloat(rawItem.Precio || 0);
+            let detalles = `${cartItem.categoria} ${cartItem.categoria2 !== '(Ninguna)' ? cartItem.categoria2 : ''} - ${cartItem.nombre}`;
+            
+            if (cartItem.color) {
+                detalles += ` [Color: ${cartItem.color}]`;
+            }
+
+            if (cartItem.categoria === 'Sofa' && rawItem['Adicional 1'] === 'Derecho' && rawItem['Adicional 2'] === 'Izquierdo') {
+                detalles += ` [Chaiselongue: ${cartItem.ad1}]`;
+            } else {
+                if (cartItem.ad1 === 'Si') {
+                    coste += parseFloat(rawItem['Coste adicional 1'] || 0);
+                    detalles += ` + ${rawItem['Adicional 1']}`;
+                }
+                if (cartItem.ad2 === 'Si') {
+                    coste += parseFloat(rawItem['Coste adicional 2'] || 0);
+                    detalles += ` + ${rawItem['Adicional 2']}`;
+                }
+            }
+            
+            cartItem.cat = detalles;
+            cartItem.coste = coste;
+        }
+
+        // Función que actualiza las variantes del artículo editado directamente desde el carrito
+        function updateCartItemVariant(index, property, value) {
+            const cartItem = cart[index];
+            if (!cartItem) return;
+            
+            cartItem[property] = value;
+            
+            // Si cambia la medida (nombre), validamos si el color anteriormente seleccionado existe en el nuevo tamaño
+            if (property === 'nombre') {
+                const rawItem = rawData.find(r => r.Categoria === cartItem.categoria && (r['Categoria 2'] || '(Ninguna)') === cartItem.categoria2 && r.Nombre === value);
+                if (rawItem) {
+                    let availableColors = [];
+                    for(let i=1; i<=7; i++) if(rawItem['Color ' + i]) availableColors.push(rawItem['Color ' + i]);
+                    if (availableColors.length > 0) {
+                        if (!availableColors.includes(cartItem.color)) {
+                            cartItem.color = availableColors[0];
+                        }
+                    } else {
+                        cartItem.color = "";
+                    }
+                    
+                    if (!rawItem['Adicional 1']) cartItem.ad1 = 'No';
+                    if (!rawItem['Adicional 2']) cartItem.ad2 = 'No';
+                }
+            }
+            
+            recalculateCartItem(cartItem);
+            updateCartUI();
+        }
+
+        function updateCartQty(index, delta) { cart[index].cantidad += delta; if (cart[index].cantidad <= 0) removeFromCart(index); else updateCartUI(); }
+        function removeFromCart(index) { cart.splice(index, 1); updateCartUI(); }
+        function clearCart() { cart = []; updateCartUI(); }
+        function updateManualGanancia(index, totalValue) { const qty = cart[index].cantidad || 1; cart[index].manualGan = (parseFloat(totalValue) || 0) / qty; updateCartUI(); }
+        function setGananciaZero(index) { cart[index].manualGan = 0; updateCartUI(); }
+        
+        function toggleGlobalMontaje(checked) {
+            globalMontaje = checked;
+            updateCartUI();
+        }
+
+        function toggleCheckoutForm() { 
+            document.getElementById('checkoutForm').classList.toggle('hidden'); 
+            document.getElementById('whatsappShareBox').classList.add('hidden'); 
+        }
+        
+        function clearCheckoutForm() {
+            document.getElementById('orderStreetType').value = 'Calle';
+            document.getElementById('orderStreet').value = '';
+            document.getElementById('orderNumber').value = '';
+            document.getElementById('orderFloor').value = '';
+            document.getElementById('orderDoor').value = '';
+            document.getElementById('orderZip').value = '';
+            document.getElementById('orderPhone').value = '';
+            document.getElementById('deliveryOption').value = '';
+            document.getElementById('deliveryTimeSingle').value = '';
+            document.getElementById('deliveryTimeStart').value = '';
+            document.getElementById('deliveryTimeEnd').value = '';
+            handleDeliveryOptionChange();
+            document.getElementById('zipSelectorWrapper').classList.add('hidden');
+            document.getElementById('zipOptionsList').innerHTML = '';
+            document.getElementById('checkoutError').classList.add('hidden');
+            
+            // Limpiar bordes de validación de error o éxito
+            ['orderStreet', 'orderNumber', 'orderPhone', 'orderZip'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.remove('border-red-500', 'ring-1', 'ring-red-500', 'border-green-500', 'ring-green-500');
+            });
+        }
+        
+        function closeShareBox() { document.getElementById('whatsappShareBox').classList.add('hidden'); }
+
+        // Manejar el cambio del selector de hora de entrega
+        function handleDeliveryOptionChange() {
+            const opt = document.getElementById('deliveryOption').value;
+            const single = document.getElementById('deliverySingleInputWrapper');
+            const double = document.getElementById('deliveryDoubleInputWrapper');
+            
+            if (opt === 'entre') {
+                single.classList.add('hidden');
+                double.classList.remove('hidden');
+            } else if (opt === 'antes' || opt === 'despues') {
+                single.classList.remove('hidden');
+                double.classList.add('hidden');
+            } else {
+                single.classList.add('hidden');
+                double.classList.add('hidden');
+            }
+        }
+
+        // Buscar el Código Postal usando la API de Nominatim (OpenStreetMap) con soporte multiopción
+        async function autoLookupZip() {
+            const street = document.getElementById('orderStreet').value.trim();
+            const streetType = document.getElementById('orderStreetType').value;
+            const num = document.getElementById('orderNumber').value.trim();
+            const btn = document.getElementById('zipSearchBtn');
+            const btnText = btn.querySelector('span');
+            const zipInput = document.getElementById('orderZip');
+            const errDiv = document.getElementById('checkoutError');
+            const selectorWrapper = document.getElementById('zipSelectorWrapper');
+            const optionsList = document.getElementById('zipOptionsList');
+            
+            if (!street) {
+                const streetInput = document.getElementById('orderStreet');
+                streetInput.classList.add('border-red-500', 'ring-1', 'ring-red-500');
+                setTimeout(() => {
+                    streetInput.classList.remove('border-red-500', 'ring-1', 'ring-red-500');
+                }, 2000);
+                errDiv.textContent = "Por favor, escribe el nombre de la calle para buscar el código postal.";
+                errDiv.className = "p-3 text-xs font-bold rounded-lg border text-center bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-900";
+                errDiv.classList.remove('hidden');
+                return;
+            }
+            
+            errDiv.classList.add('hidden');
+            selectorWrapper.classList.add('hidden');
+            optionsList.innerHTML = '';
+            btn.disabled = true;
+            btnText.textContent = "Buscando...";
+            
+            try {
+                // Petición enfocada a España (limite de 10 para evaluar múltiples distritos/zonas)
+                const query = encodeURIComponent(`${streetType} ${street} ${num}, España`);
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=10&addressdetails=1&q=${query}`, {
+                    headers: { 'Accept-Language': 'es' }
+                });
+                
+                if (!response.ok) throw new Error("Error en la respuesta del servidor de geolocalización.");
+                const data = await response.json();
+                
+                if (data && data.length > 0) {
+                    const matches = [];
+                    data.forEach(result => {
+                        if (result.address && result.address.postcode) {
+                            const postcode = result.address.postcode.replace(/\s+/g, '').match(/\d{5}/)?.[0] || result.address.postcode;
+                            const suburb = result.address.suburb || result.address.neighbourhood || '';
+                            const city = result.address.city || result.address.town || result.address.village || result.address.county || '';
+                            const state = result.address.state || '';
+                            
+                            let details = [];
+                            if (suburb) details.push(suburb);
+                            if (city) details.push(city);
+                            if (state && !city.includes(state)) details.push(state);
+                            
+                            const label = details.length > 0 ? `${postcode} - ${details.join(', ')}` : postcode;
+                            
+                            // Filtrar combinaciones duplicadas
+                            if (!matches.some(m => m.postcode === postcode && m.label === label)) {
+                                matches.push({ postcode, label });
+                            }
+                        }
+                    });
+                    
+                    if (matches.length === 1) {
+                        // Único código postal encontrado, rellenar directamente
+                        zipInput.value = matches[0].postcode;
+                        zipInput.classList.add('border-green-500', 'ring-1', 'ring-green-500');
+                        setTimeout(() => {
+                            zipInput.classList.remove('border-green-500', 'ring-1', 'ring-green-500');
+                        }, 2000);
+                    } else if (matches.length > 1) {
+                        // Múltiples códigos encontrados, desplegar el selector interactivo
+                        selectorWrapper.classList.remove('hidden');
+                        matches.forEach(match => {
+                            const btnOpt = document.createElement('button');
+                            btnOpt.type = "button";
+                            btnOpt.className = "w-full text-left p-2.5 rounded-lg text-xs font-semibold bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:border-blue-300 dark:hover:border-blue-900 transition text-slate-700 dark:text-zinc-200 flex items-center justify-between";
+                            btnOpt.innerHTML = `<span>📍 ${match.label}</span> <span class="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded-full font-bold text-[10px]">Elegir</span>`;
+                            btnOpt.onclick = () => {
+                                zipInput.value = match.postcode;
+                                selectorWrapper.classList.add('hidden');
+                                zipInput.classList.add('border-green-500', 'ring-1', 'ring-green-500');
+                                setTimeout(() => {
+                                    zipInput.classList.remove('border-green-500', 'ring-1', 'ring-green-500');
+                                }, 2000);
+                            };
+                            optionsList.appendChild(btnOpt);
+                        });
+                        errDiv.textContent = "Se han encontrado múltiples códigos postales. Por favor, selecciona el correcto abajo.";
+                        errDiv.className = "p-3 text-xs font-bold rounded-lg border text-center bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900";
+                        errDiv.classList.remove('hidden');
+                    } else {
+                        throw new Error("No se encontró ningún código postal específico para esta dirección.");
+                    }
+                } else {
+                    throw new Error("Dirección no encontrada. Escríbela con otro formato o introduce el código postal de forma manual.");
+                }
+            } catch (error) {
+                errDiv.textContent = error.message || "No se pudo autocompletar. Por favor, introduce el código postal manualmente.";
+                errDiv.className = "p-3 text-xs font-bold rounded-lg border text-center bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-900";
+                errDiv.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btnText.textContent = "Buscar CP";
+            }
+        }
+
+        // Generación del formato final de pedido para WhatsApp
+        async function generateWhatsAppMessage() {
+            const fields = ['orderStreet', 'orderNumber', 'orderPhone'];
+            let isValid = true;
+            
+            fields.forEach(id => {
+                const el = document.getElementById(id);
+                if (!el.value.trim()) {
+                    el.classList.add('border-red-500', 'ring-1', 'ring-red-500');
+                    isValid = false;
+                } else {
+                    el.classList.remove('border-red-500', 'ring-1', 'ring-red-500');
+                }
+            });
+
+            if (!isValid) {
+                const err = document.getElementById('checkoutError');
+                err.textContent = "Error: Por favor, completa los campos obligatorios marcados en rojo.";
+                err.className = "p-3 text-xs font-bold rounded-lg border text-center bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-900";
+                err.classList.remove('hidden');
+                return;
+            } else {
+                document.getElementById('checkoutError').classList.add('hidden');
+            }
+
+            const streetType = document.getElementById('orderStreetType').value;
+            const street = document.getElementById('orderStreet').value.trim();
+            const num = document.getElementById('orderNumber').value.trim();
+            const floor = document.getElementById('orderFloor').value.trim();
+            const door = document.getElementById('orderDoor').value.trim();
+            let zip = document.getElementById('orderZip').value.trim();
+            const phone = document.getElementById('orderPhone').value.trim();
+
+            // Si el cliente no proporcionó el Código Postal de forma manual, intentamos resolverlo
+            if (!zip && street) {
+                const err = document.getElementById('checkoutError');
+                err.textContent = "Buscando código postal automáticamente en segundo plano...";
+                err.classList.remove('hidden');
+                err.className = "p-3 text-xs font-bold rounded-lg border text-center bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-900";
+                
+                try {
+                    const query = encodeURIComponent(`${streetType} ${street} ${num}, España`);
+                    const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=10&addressdetails=1&q=${query}`, {
+                        headers: { 'Accept-Language': 'es' }
+                    });
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data && data.length > 0) {
+                            const matches = [];
+                            data.forEach(result => {
+                                if (result.address && result.address.postcode) {
+                                    const postcode = result.address.postcode.replace(/\s+/g, '').match(/\d{5}/)?.[0] || result.address.postcode;
+                                    const suburb = result.address.suburb || result.address.neighbourhood || '';
+                                    const city = result.address.city || result.address.town || result.address.village || result.address.county || '';
+                                    const state = result.address.state || '';
+                                    
+                                    let details = [];
+                                    if (suburb) details.push(suburb);
+                                    if (city) details.push(city);
+                                    if (state && !city.includes(state)) details.push(state);
+                                    
+                                    const label = details.length > 0 ? `${postcode} - ${details.join(', ')}` : postcode;
+                                    
+                                    if (!matches.some(m => m.postcode === postcode && m.label === label)) {
+                                        matches.push({ postcode, label });
+                                    }
+                                }
+                            });
+                            
+                            if (matches.length === 1) {
+                                zip = matches[0].postcode;
+                                document.getElementById('orderZip').value = zip;
+                                err.classList.add('hidden');
+                            } else if (matches.length > 1) {
+                                // Pausar WhatsApp, mostrar la lista interactiva de Códigos Postales
+                                err.textContent = "⚠️ Varios códigos postales encontrados. Por favor, selecciona el correcto abajo.";
+                                err.className = "p-3 text-xs font-bold rounded-lg border text-center bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900";
+                                
+                                const selectorWrapper = document.getElementById('zipSelectorWrapper');
+                                const optionsList = document.getElementById('zipOptionsList');
+                                selectorWrapper.classList.remove('hidden');
+                                optionsList.innerHTML = '';
+                                
+                                matches.forEach(match => {
+                                    const btnOpt = document.createElement('button');
+                                    btnOpt.type = "button";
+                                    btnOpt.className = "w-full text-left p-2.5 rounded-lg text-xs font-semibold bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:border-blue-300 dark:hover:border-blue-900 transition text-slate-700 dark:text-zinc-200 flex items-center justify-between";
+                                    btnOpt.innerHTML = `<span>📍 ${match.label}</span> <span class="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded-full font-bold text-[10px]">Elegir</span>`;
+                                    btnOpt.onclick = () => {
+                                        document.getElementById('orderZip').value = match.postcode;
+                                        selectorWrapper.classList.add('hidden');
+                                        err.classList.add('hidden');
+                                        generateWhatsAppMessage(); // Volver a ejecutar de forma automatizada al pulsar el deseado
+                                    };
+                                    optionsList.appendChild(btnOpt);
+                                });
+                                
+                                document.getElementById('orderZip').scrollIntoView({ behavior: 'smooth' });
+                                return; // Detener flujo para esperar la elección interactiva del usuario
+                            } else {
+                                err.classList.add('hidden');
+                            }
+                        } else {
+                            err.classList.add('hidden');
+                        }
+                    } else {
+                        err.classList.add('hidden');
+                    }
+                } catch (e) {
+                    console.error("Error silently fetching ZIP", e);
+                    err.classList.add('hidden');
+                }
+            }
+
+            // Capturar valor estructurado de la hora de entrega
+            const deliveryOpt = document.getElementById('deliveryOption').value;
+            let deliveryText = "";
+            if (deliveryOpt === 'antes') {
+                const val = document.getElementById('deliveryTimeSingle').value.trim();
+                if (val) deliveryText = `antes de las ${val}`;
+            } else if (deliveryOpt === 'despues') {
+                const val = document.getElementById('deliveryTimeSingle').value.trim();
+                if (val) deliveryText = `después de las ${val}`;
+            } else if (deliveryOpt === 'entre') {
+                const valStart = document.getElementById('deliveryTimeStart').value.trim();
+                const valEnd = document.getElementById('deliveryTimeEnd').value.trim();
+                if (valStart && valEnd) deliveryText = `entre las ${valStart} y las ${valEnd}`;
+            }
+
+            let items = [];
+            cart.forEach((cartItem, cartIdx) => { 
+                for (let i = 0; i < cartItem.cantidad; i++) {
+                    items.push({
+                        originalIndex: cartIdx, 
+                        cat: cartItem.cat, 
+                        coste: cartItem.coste, 
+                        categoria: cartItem.categoria, 
+                        manualGan: cartItem.manualGan, 
+                        autoGan: null, 
+                        used: false
+                    }); 
+                }
+            });
+            
+            // Packs inteligentes
+            while (true) { let litera = items.find(i => !i.used && esLitera(i.categoria)), col1 = items.find(i => !i.used && esColchon(i.categoria)), col2 = items.find(i => !i.used && esColchon(i.categoria) && i !== col1); if (litera && col1 && col2) { litera.used = true; col1.used = true; col2.used = true; litera.autoGan = 95; col1.autoGan = 0; col2.autoGan = 0; } else break; }
+            while (true) { let comoda = items.find(i => !i.used && esComoda(i.categoria)); if (!comoda) break; let targets = items.filter(i => !i.used && (esCanape(i.categoria) || esColchon(i.categoria) || esCabezal(i.categoria))); if (targets.length > 0) { let targetsInPack = targets.slice(0, 3); comoda.used = true; comoda.autoGan = 10; targetsInPack.forEach((target, index) => { target.used = true; target.autoGan = (index === 0) ? 80 : 0; }); } else break; }
+            while (true) { let canape = items.find(i => !i.used && esCanape(i.categoria)), colchon = items.find(i => !i.used && esColchon(i.categoria)), cabezal = items.find(i => !i.used && esCabezal(i.categoria)); if (canape && colchon && cabezal) { canape.used = true; colchon.used = true; cabezal.used = true; canape.autoGan = 80; colchon.autoGan = 0; cabezal.autoGan = 0; } else break; }
+            while (true) { 
+                let foundPair = false, canape = items.find(i => !i.used && esCanape(i.categoria)), colchon = items.find(i => !i.used && esColchon(i.categoria)), cabezal = items.find(i => !i.used && esCabezal(i.categoria)); 
+                if (canape && colchon) { 
+                    canape.used = true; colchon.used = true; canape.autoGan = 80; colchon.autoGan = 0; foundPair = true; 
+                } else if (canape && cabezal) { 
+                    canape.used = true; cabezal.used = true; canape.autoGan = 80; cabezal.autoGan = 0; foundPair = true; 
+                } else if (colchon && cabezal) { 
+                    colchon.used = true; cabezal.used = true; colchon.autoGan = 80; colchon.autoGan = 0; foundPair = true; 
+                } 
+                if (!foundPair) break; 
+            }
+            const conteoPorCategoriaUnidadesLibres = {}; items.forEach(i => { if (!i.used) conteoPorCategoriaUnidadesLibres[i.categoria] = (conteoPorCategoriaUnidadesLibres[i.categoria] || 0) + 1; });
+            items.forEach(i => { if (!i.used && conteoPorCategoriaUnidadesLibres[i.categoria] >= 3) { i.used = true; i.autoGan = esArmario(i.categoria) ? 80 : 60; } });
+            items.forEach(i => { if (i.autoGan === null) i.autoGan = getStandardProfit(i.categoria); });
+            let totalGananciaGlobal = 0; cart.forEach((cartItem, idx) => { items.filter(f => f.originalIndex === idx).forEach(f => { totalGananciaGlobal += f.manualGan !== null ? f.manualGan : f.autoGan; }); });
+            const tc = cart.reduce((a, b) => a + (b.coste * b.cantidad), 0);
+            const totalPresupuestoPVP = tc + totalGananciaGlobal;
+
+            let msg = `*🛍️ RESUMEN DE TU PEDIDO*\n-------------------------------------------\n\n*📦 Productos:*\n`;
+            cart.forEach(cartItem => { msg += `• [x${cartItem.cantidad}] ${cartItem.cat}\n`; });
+            msg += `\n*📍 Dirección:* ${streetType} ${street}, ${num}${floor ? ', Piso ' + floor : ''}${door ? ', Puerta ' + door : ''}\n*📮 C.P.:* ${zip ? zip : 'No especificado'}\n*📞 Teléfono:* ${phone}\n`;
+            
+            // Renderizado de Montaje Gratuito Global
+            if (globalMontaje) msg += `\n*🛠️ Montaje:* Incluido\n`;
+            
+            // Renderizado de la Alerta de Hora de Entrega debajo de Montaje
+            if (deliveryText) {
+                msg += `\n*🚨 ⏰ HORA DE ENTREGA:* ${deliveryText.toUpperCase()} 🚨\n`;
+            }
+            
+            msg += `\n-------------------------------------------\n*💵 TOTAL DE LA COMPRA (PVP): ${totalPresupuestoPVP.toFixed(2)}€*\n-------------------------------------------`;
+
+            document.getElementById('whatsappMessageContent').textContent = msg;
+            const shareBox = document.getElementById('whatsappShareBox');
+            shareBox.classList.remove('hidden');
+            shareBox.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function copyToClipboard() { const textToCopy = document.getElementById('whatsappMessageContent').textContent; const tempTextArea = document.createElement("textarea"); tempTextArea.value = textToCopy; tempTextArea.style.top = "0"; tempTextArea.style.left = "0"; tempTextArea.style.position = "fixed"; document.body.appendChild(tempTextArea); tempTextArea.focus(); tempTextArea.select(); try { const successful = document.execCommand('copy'); if (successful) { const alertDiv = document.getElementById('copySuccessAlert'); alertDiv.classList.remove('hidden'); setTimeout(() => { alertDiv.classList.add('hidden'); }, 3000); } } catch (err) {} document.body.removeChild(tempTextArea); }
+        function openWhatsAppWeb() { const textToCopy = document.getElementById('whatsappMessageContent').textContent; const encodedText = encodeURIComponent(textToCopy); const phone = document.getElementById('orderPhone').value.trim().replace(/\s+/g, ''); let url = `https://wa.me/?text=${encodedText}`; if (phone) { const cleanPhone = phone.replace(/[^0-9+]/g, ''); url = `https://wa.me/${cleanPhone}?text=${encodedText}`; } window.open(url, '_blank'); }
+
+        function updateCartUI() {
+            document.getElementById('cartSection').classList.toggle('hidden', cart.length === 0);
+            let items = [];
+            cart.forEach((cartItem, cartIdx) => { 
+                for (let i = 0; i < cartItem.cantidad; i++) {
+                    items.push({
+                        originalIndex: cartIdx, 
+                        cat: cartItem.cat, 
+                        coste: cartItem.coste, 
+                        categoria: cartItem.categoria, 
+                        manualGan: cartItem.manualGan, 
+                        autoGan: null, 
+                        packInfo: null, 
+                        used: false
+                    }); 
+                }
+            });
+            
+            // Packs inteligentes
+            while (true) { let litera = items.find(i => !i.used && esLitera(i.categoria)), col1 = items.find(i => !i.used && esColchon(i.categoria)), col2 = items.find(i => !i.used && esColchon(i.categoria) && i !== col1); if (litera && col1 && col2) { litera.used = true; col1.used = true; col2.used = true; litera.autoGan = 95; col1.autoGan = 0; col2.autoGan = 0; litera.packInfo = "Pack Litera + 2 Colchones (95€ ganancia)"; col1.packInfo = "Pack Litera + 2 Colchones (Incluido)"; col2.packInfo = "Pack Litera + 2 Colchones (Incluido)"; } else break; }
+            while (true) { let comoda = items.find(i => !i.used && esComoda(i.categoria)); if (!comoda) break; let targets = items.filter(i => !i.used && (esCanape(i.categoria) || esColchon(i.categoria) || esCabezal(i.categoria))); if (targets.length > 0) { let targetsInPack = targets.slice(0, 3); comoda.used = true; comoda.autoGan = 10; comoda.packInfo = "Pack Cómoda (10€)"; targetsInPack.forEach((target, index) => { target.used = true; target.autoGan = (index === 0) ? 80 : 0; target.packInfo = "Pack Cómoda + " + target.categoria + " (80€)"; }); } else break; }
+            while (true) { let canape = items.find(i => !i.used && esCanape(i.categoria)), colchon = items.find(i => !i.used && esColchon(i.categoria)), cabezal = items.find(i => !i.used && esCabezal(i.categoria)); if (canape && colchon && cabezal) { canape.used = true; colchon.used = true; cabezal.used = true; canape.autoGan = 80; colchon.autoGan = 0; cabezal.autoGan = 0; canape.packInfo = "Pack 3 Elementos (80€)"; colchon.packInfo = "Pack 3 Elementos (Incluido)"; cabezal.packInfo = "Pack 3 Elementos (Incluido)"; } else break; }
+            while (true) { 
+                let foundPair = false, canape = items.find(i => !i.used && esCanape(i.categoria)), colchon = items.find(i => !i.used && esColchon(i.categoria)), cabezal = items.find(i => !i.used && esCabezal(i.categoria)); 
+                if (canape && colchon) { 
+                    canape.used = true; colchon.used = true; canape.autoGan = 80; colchon.autoGan = 0; canape.packInfo = "Pack 2 Elementos (80€)"; colchon.packInfo = "Pack 2 Elementos (Incluido)"; foundPair = true; 
+                } else if (canape && cabezal) { 
+                    canape.used = true; cabezal.used = true; canape.autoGan = 80; cabezal.autoGan = 0; canape.packInfo = "Pack 2 Elementos (80€)"; cabezal.packInfo = "Pack 2 Elementos (Incluido)"; foundPair = true; 
+                } else if (colchon && cabezal) { 
+                    colchon.used = true; cabezal.used = true; colchon.autoGan = 80; colchon.autoGan = 0; colchon.packInfo = "Pack 2 Elementos (80€)"; cabezal.packInfo = "Pack 2 Elementos (Incluido)"; foundPair = true; 
+                } 
+                if (!foundPair) break; 
+            }
+            const conteoPorCategoriaUnidadesLibres = {}; items.forEach(i => { if (!i.used) conteoPorCategoriaUnidadesLibres[i.categoria] = (conteoPorCategoriaUnidadesLibres[i.categoria] || 0) + 1; });
+            items.forEach(i => { if (!i.used && conteoPorCategoriaUnidadesLibres[i.categoria] >= 3) { i.used = true; const esArm = esArmario(i.categoria); i.autoGan = esArm ? 80 : 60; i.packInfo = `Pack +3 Unidades (${i.autoGan}€)`; } });
+            items.forEach(i => { if (i.autoGan === null) i.autoGan = getStandardProfit(i.categoria); });
+            let filasDesktop = [], filasMobile = [], totalGananciaGlobal = 0;
+            
+            cart.forEach((cartItem, idx) => {
+                const matchingFlat = items.filter(f => f.originalIndex === idx);
+                let totalGananciaFila = 0, packInfos = [];
+                matchingFlat.forEach(f => { totalGananciaFila += (f.manualGan !== null ? f.manualGan : f.autoGan); if (f.packInfo) packInfos.push(f.packInfo); });
+                totalGananciaGlobal += totalGananciaFila;
+                const costeTotalFila = cartItem.coste * cartItem.cantidad;
+
+                // Obtener opciones de variantes disponibles dinámicamente para este artículo del carrito
+                const availableNombres = [...new Set(rawData.filter(r => r.Categoria === cartItem.categoria && (r['Categoria 2'] || '(Ninguna)') === cartItem.categoria2).map(r => r.Nombre))];
+                const currentRawItem = rawData.find(r => r.Categoria === cartItem.categoria && (r['Categoria 2'] || '(Ninguna)') === cartItem.categoria2 && r.Nombre === cartItem.nombre);
+                
+                let availableColors = [];
+                let ad1Label = "";
+                let ad2Label = "";
+                let esSofaChaiselongue = false;
+
+                if (currentRawItem) {
+                    for(let i=1; i<=7; i++) if(currentRawItem['Color ' + i]) availableColors.push(currentRawItem['Color ' + i]);
+                    
+                    if (cartItem.categoria === 'Sofa' && currentRawItem['Adicional 1'] === 'Derecho' && currentRawItem['Adicional 2'] === 'Izquierdo') {
+                        esSofaChaiselongue = true;
+                        ad1Label = "Lado Chaiselongue";
+                    } else {
+                        ad1Label = currentRawItem['Adicional 1'];
+                        ad2Label = currentRawItem['Adicional 2'];
+                    }
+                }
+
+                // Generar los desplegables de variantes
+                const variantEditorHtml = `
+                    <div class="mt-2 flex flex-wrap gap-2 text-xs border-t border-dashed border-slate-100 dark:border-zinc-800/80 pt-2">
+                        ${availableNombres.length > 1 ? `
+                            <div class="flex flex-col">
+                                <span class="text-[10px] text-slate-400 dark:text-zinc-500 font-bold uppercase">Medida</span>
+                                <select onchange="updateCartItemVariant(${idx}, 'nombre', this.value)" class="mt-0.5 p-1 bg-slate-50 dark:bg-zinc-850 border border-slate-200 dark:border-zinc-700 rounded text-[11px] text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-[150px]">
+                                    ${availableNombres.map(n => `<option value="${n}" ${n === cartItem.nombre ? 'selected' : ''}>${n}</option>`).join('')}
+                                </select>
+                            </div>
+                        ` : ''}
+                        
+                        ${availableColors.length > 0 ? `
+                            <div class="flex flex-col">
+                                <span class="text-[10px] text-slate-400 dark:text-zinc-500 font-bold uppercase">Color</span>
+                                <select onchange="updateCartItemVariant(${idx}, 'color', this.value)" class="mt-0.5 p-1 bg-slate-50 dark:bg-zinc-850 border border-slate-200 dark:border-zinc-700 rounded text-[11px] text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-[120px]">
+                                    ${availableColors.map(c => `<option value="${c}" ${c === cartItem.color ? 'selected' : ''}>${c}</option>`).join('')}
+                                </select>
+                            </div>
+                        ` : ''}
+
+                        ${ad1Label ? `
+                            <div class="flex flex-col">
+                                <span class="text-[10px] text-slate-400 dark:text-zinc-500 font-bold uppercase">${ad1Label}</span>
+                                <select onchange="updateCartItemVariant(${idx}, 'ad1', this.value)" class="mt-0.5 p-1 bg-slate-50 dark:bg-zinc-850 border border-slate-200 dark:border-zinc-700 rounded text-[11px] text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-[120px]">
+                                    ${esSofaChaiselongue ? `
+                                        <option value="Derecho" ${cartItem.ad1 === 'Derecho' ? 'selected' : ''}>Derecho</option>
+                                        <option value="Izquierdo" ${cartItem.ad1 === 'Izquierdo' ? 'selected' : ''}>Izquierdo</option>
+                                    ` : `
+                                        <option value="No" ${cartItem.ad1 === 'No' ? 'selected' : ''}>No</option>
+                                        <option value="Si" ${cartItem.ad1 === 'Si' ? 'selected' : ''}>Si (+${currentRawItem['Coste adicional 1'] || 0}€)</option>
+                                    `}
+                                </select>
+                            </div>
+                        ` : ''}
+
+                        ${ad2Label ? `
+                            <div class="flex flex-col">
+                                <span class="text-[10px] text-slate-400 dark:text-zinc-500 font-bold uppercase">${ad2Label}</span>
+                                <select onchange="updateCartItemVariant(${idx}, 'ad2', this.value)" class="mt-0.5 p-1 bg-slate-50 dark:bg-zinc-850 border border-slate-200 dark:border-zinc-700 rounded text-[11px] text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-[120px]">
+                                    <option value="No" ${cartItem.ad2 === 'No' ? 'selected' : ''}>No</option>
+                                    <option value="Si" ${cartItem.ad2 === 'Si' ? 'selected' : ''}>Si (+${currentRawItem['Coste adicional 2'] || 0}€)</option>
+                                </select>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+                
+                filasDesktop.push(`
+                    <tr class="hover:bg-slate-50/50 dark:hover:bg-zinc-800/30 transition duration-150">
+                        <td class="py-4 px-4 text-sm text-slate-800 dark:text-zinc-200 font-medium">
+                            <div class="flex flex-col">
+                                <div>
+                                    ${cartItem.cat} 
+                                </div>
+                                ${variantEditorHtml}
+                            </div>
+                        </td>
+                        <td class="py-4 px-4 text-center">
+                            <div class="inline-flex items-center h-9 border border-slate-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 shadow-sm overflow-hidden mx-auto">
+                                <button type="button" onclick="updateCartQty(${idx}, -1)" class="w-8 h-full flex items-center justify-center text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-700 hover:text-slate-800 dark:hover:text-zinc-200 font-bold text-sm select-none border-r border-slate-200 dark:border-zinc-700">-</button>
+                                <span class="w-8 text-center font-bold text-xs text-slate-800 dark:text-zinc-100">${cartItem.cantidad}</span>
+                                <button type="button" onclick="updateCartQty(${idx}, 1)" class="w-8 h-full flex items-center justify-center text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-700 hover:text-slate-800 dark:hover:text-zinc-100 font-bold text-sm select-none border-l border-slate-200 dark:border-zinc-700">+</button>
+                            </div>
+                        </td>
+                        <td class="py-4 px-4 text-sm text-slate-600 dark:text-zinc-400 font-semibold">${costeTotalFila.toFixed(2)}€</td>
+                        <td class="py-4 px-4">
+                            <div class="flex items-center gap-1.5">
+                                <input type="number" value="${totalGananciaFila}" onchange="updateManualGanancia(${idx}, this.value)" class="w-24 p-1.5 border text-sm rounded-lg ${packInfos.length > 0 ? 'bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-300 border-green-200 dark:border-green-900/40' : 'bg-white dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100'}">
+                                <button onclick="setGananciaZero(${idx})" class="bg-slate-100 dark:bg-zinc-800 hover:bg-red-100 dark:hover:bg-red-950/40 text-slate-500 dark:text-zinc-400 p-1.5 rounded-lg text-xs font-extrabold w-8 h-8 flex items-center justify-center border border-slate-200 dark:border-zinc-700">0</button>
+                            </div>
+                        </td>
+                        <td class="py-4 px-4 text-center">
+                            <button onclick="removeFromCart(${idx})" class="text-slate-400 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 font-bold transition text-2xl">×</button>
+                        </td>
+                    </tr>
+                `);
+                
+                filasMobile.push(`
+                    <div class="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm space-y-3.5">
+                        <div class="flex justify-between items-start gap-2">
+                            <div class="space-y-1.5 w-full">
+                                <p class="text-sm font-bold text-slate-800 dark:text-zinc-200">
+                                    ${cartItem.cat}
+                                </p>
+                                ${variantEditorHtml}
+                            </div>
+                            <button onclick="removeFromCart(${idx})" class="text-slate-400 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 font-bold text-2xl p-1">×</button>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100 dark:border-zinc-800">
+                            <div>
+                                <span class="block text-[11px] text-slate-400 dark:text-zinc-500 uppercase font-bold mb-1">Cantidad</span>
+                                <div class="flex items-center h-10 w-full border border-slate-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800">
+                                    <button type="button" onclick="updateCartQty(${idx}, -1)" class="flex-1 h-full flex items-center justify-center text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-700 hover:text-slate-800 dark:hover:text-zinc-100 font-bold">-</button>
+                                    <span class="w-10 text-center font-bold text-xs text-slate-800 dark:text-zinc-100">${cartItem.cantidad}</span>
+                                    <button type="button" onclick="updateCartQty(${idx}, 1)" class="flex-1 h-full flex items-center justify-center text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-700 hover:text-slate-800 dark:hover:text-zinc-100 font-bold">+</button>
+                                </div>
+                            </div>
+                            <div>
+                                <span class="block text-[11px] text-slate-400 dark:text-zinc-500 uppercase font-bold mb-1">Coste Total</span>
+                                <div class="h-10 flex items-center text-sm font-semibold text-slate-700 dark:text-zinc-300 bg-slate-50 dark:bg-zinc-800/40 px-3 rounded-lg border border-slate-200 dark:border-zinc-700">${costeTotalFila.toFixed(2)}€</div>
+                            </div>
+                        </div>
+                        <div class="pt-2 border-t border-slate-100 dark:border-zinc-800">
+                            <span class="block text-[11px] text-slate-400 dark:text-zinc-500 uppercase font-bold mb-1">Ganancia (€)</span>
+                            <div class="flex items-center gap-1.5">
+                                <input type="number" value="${totalGananciaFila}" onchange="updateManualGanancia(${idx}, this.value)" class="flex-1 h-10 p-2.5 border text-sm rounded-lg ${packInfos.length > 0 ? 'bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-300 border-green-200 dark:border-green-900/40' : 'bg-white dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100'}">
+                                <button onclick="setGananciaZero(${idx})" class="bg-slate-100 dark:bg-zinc-800 hover:bg-red-100 dark:hover:bg-red-950/40 text-slate-500 dark:text-zinc-400 p-2.5 rounded-lg text-xs font-extrabold w-10 h-10 flex items-center justify-center border border-slate-200 dark:border-zinc-700">0</button>
+                            </div>
+                        </div>
+                    </div>
+                `);
+            });
+            document.getElementById('cartTableBody').innerHTML = filasDesktop.join('');
+            document.getElementById('cartMobileContainer').innerHTML = filasMobile.join('');
+            const tc = cart.reduce((a, b) => a + (b.coste * b.cantidad), 0);
+            document.getElementById('subtotalCostes').textContent = `${tc.toFixed(2)}€`;
+            document.getElementById('subtotalGanancias').textContent = `${totalGananciaGlobal.toFixed(2)}€`;
+            document.getElementById('totalPresupuesto').textContent = `${(tc + totalGananciaGlobal).toFixed(2)}€`;
+
+            if (rawData && rawData.length > 0) {
+                updateNombre();
+            }
+        }
+    </script>
+</body>
+</html>
